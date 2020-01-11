@@ -1,108 +1,78 @@
 # syntax.py
 
-# TODO: escape characters
-
-from PySide2.QtCore import QRegExp
-from PySide2.QtGui import QColor, QTextCharFormat, QFont, QSyntaxHighlighter
+from PyQt4.QtCore import QRegExp
+from PyQt4.QtGui import QColor, QTextCharFormat, QFont, QSyntaxHighlighter
 
 
-def format(color, style=''):
-    """Return a QTextCharFormat with the given attributes.
-    """
-    _color = QColor()
-    _color.setNamedColor(color)
-
-    _format = QTextCharFormat()
-    _format.setForeground(_color)
-    if 'bold' in style:
-        _format.setFontWeight(QFont.Bold)
-    if 'italic' in style:
-        _format.setFontItalic(True)
-
-    return _format
-
-
-# Syntax styles that can be shared by all languages
-STYLES = {
-    'keyword': format('blue'),
-    'operator': format('red'),
-    'brace': format('darkGray'),
-    'defclass': format('black', 'bold'),
-    'string': format('magenta'),
-    'string2': format('darkMagenta'),
-    'comment': format('darkGreen', 'italic'),
-    'self': format('black', 'italic'),
-    'numbers': format('brown'),
-}
-
-
-class PythonHighlighter (QSyntaxHighlighter):
-    """Syntax highlighter for the Python language.
-    """
-    # Python keywords
-    keywords = [
-        'and', 'assert', 'break', 'class', 'continue', 'def',
-        'del', 'elif', 'else', 'except', 'exec', 'finally',
-        'for', 'from', 'global', 'if', 'import', 'in',
-        'is', 'lambda', 'not', 'or', 'pass', 'print',
-        'raise', 'return', 'try', 'while', 'yield',
-        'None', 'True', 'False',
-    ]
-
-    # Python operators
-    operators = [
-        '=',
-        # Comparison
-        '==', '!=', '<', '<=', '>', '>=',
-        # Arithmetic
-        '\+', '-', '\*', '/', '//', '\%', '\*\*',
-        # In-place
-        '\+=', '-=', '\*=', '/=', '\%=',
-        # Bitwise
-        '\^', '\|', '\&', '\~', '>>', '<<',
-    ]
-
-    # Python braces
-    braces = [
-        '\{', '\}', '\(', '\)', '\[', '\]',
-    ]
+class PythonHighlighter(QSyntaxHighlighter):
     def __init__(self, document):
         QSyntaxHighlighter.__init__(self, document)
 
-        self.document().contentsChanged.connect(self.update)
-        self.block_index = 0
+        # Syntax styles specific for Gaffer
+        self.styles = {
+            'keyword':  self.text_format("#CC7832", 'bold'),
+            'operator': self.text_format("#FFC68D"),
+            'brace':    self.text_format("#EEEEEE"),
+            'defclass': self.text_format("#EEEEEE", 'bold'),
+            'string': self.text_format("#8AA779"),
+            'string2':  self.text_format("#8AA779", 'italic'),
+            'comment':  self.text_format("#808080", 'italic'),
+            'self':     self.text_format("#8A653B", 'italic'),
+            'numbers':  self.text_format("#6897BB")
+        }
 
-        # Multi-line strings (expression, flag, style)
-        # FIXME: The triple-quotes matches signgle quote string
-        self.tri_single = (QRegExp("'''"), 1, 'string2')
-        self.tri_double = (QRegExp('"""'), 2, 'string2')
+        # Python keywords
+        self.keywords = [
+            'and', 'assert', 'break', 'class', 'continue', 'def',
+            'del', 'elif', 'else', 'except', 'exec', 'finally',
+            'for', 'from', 'global', 'if', 'import', 'in',
+            'is', 'lambda', 'not', 'or', 'pass', 'print',
+            'raise', 'return', 'try', 'while', 'yield',
+            'None', 'True', 'False',
+        ]
 
-        self.formats = {}
+        # Python operators
+        self.operators = [
+            '=',
+            # Comparison
+            '==', '!=', '<', '<=', '>', '>=',
+            # Arithmetic
+            '\+', '-', '\*', '/', '//', '\%', '\*\*',
+            # In-place
+            '\+=', '-=', '\*=', '/=', '\%=',
+            # Bitwise
+            '\^', '\|', '\&', '\~', '>>', '<<',
+        ]
+
+        # Python braces
+        self.braces = [
+            '\{', '\}', '\(', '\)', '\[', '\]',
+        ]
+
+        self.block_state_id = {
+            "'":   2,
+            '"':   3,
+            "'''": 4,
+            '"""': 5,
+            '#':   6
+        }
 
         rules = []
 
         # Keyword, operator, and brace rules
-        rules += [(r'\b%s\b' % w, 0, 'keyword') for w in PythonHighlighter.keywords]
-        rules += [(r'%s' % o, 0, 'operator') for o in PythonHighlighter.operators]
-        rules += [(r'%s' % b, 0, 'brace') for b in PythonHighlighter.braces]
+        rules += [(r'\b%s\b' % w, 0, 'keyword') for w in self.keywords]
+        rules += [(r'%s' % o, 0, 'operator') for o in self.operators]
+        rules += [(r'%s' % b, 0, 'brace') for b in self.braces]
 
         # All other rules
         rules += [
             # 'self'
             (r'\bself\b', 0, 'self'),
 
-            # Double-quoted string, possibly containing escape sequences
-            (r'"[^"\\]*(\\.[^"\\]*)*"', 0, 'string'),
-            # Single-quoted string, possibly containing escape sequences
-            (r"'[^'\\]*(\\.[^'\\]*)*'", 0, 'string'),
-
             # 'def' followed by an identifier
             (r'\bdef\b\s*(\w+)', 1, 'defclass'),
             # 'class' followed by an identifier
             (r'\bclass\b\s*(\w+)', 1, 'defclass'),
-
-            # From '#' until a newline
-            (r'#[^\n]*', 0, 'comment'),
 
             # Numeric literals
             (r'\b[+-]?[0-9]+[lL]?\b', 0, 'numbers'),
@@ -111,98 +81,120 @@ class PythonHighlighter (QSyntaxHighlighter):
         ]
 
         # Build a QRegExp for each pattern
-        self.rules = [(QRegExp(pat), index, fmt)
-            for (pat, index, fmt) in rules]
+        self.rules = [(QRegExp(pat), index, fmt) for (pat, index, fmt) in rules]
 
-    def update(self):
-        self.document().contentsChanged.disconnect(self.update)
-        self.block_index = 0
-        self.rehighlight()
-        self.document().contentsChanged.connect(self.update)
+        self.formats = {}
+
+    @staticmethod
+    def text_format(color, style=''):
+        _color = QColor(color)
+
+        _format = QTextCharFormat()
+        _format.setForeground(_color)
+
+        if 'bold' in style:
+            _format.setFontWeight(QFont.Bold)
+
+        if 'italic' in style:
+            _format.setFontItalic(True)
+
+        return _format
+
+    def isSubStrEscaped(self, substr_index):
+        if substr_index <= 0:
+            return False
+        text = self.currentBlock().text()
+        index = substr_index-1
+        escape_count = 0
+        while index >= 0 and text[index] == "\\":
+            escape_count += 1
+            index -= 1
+        return escape_count % 2 != 0
+
+    def parseStringsAndComments(self, text):
+        strings_and_comments = {"string": [], "string2": [], "comment": []}
+
+        # find triple quote continuation from last block
+        if self.previousBlockState() in [self.block_state_id["'''"], self.block_state_id['"""']]:
+            strings_and_comments["string2"] = [(0, len(text))]
+            # Keep in the same state as before since we are currently inside a triple-quote string
+            self.setCurrentBlockState(self.previousBlockState())
+        else:
+            # On every block we start from scratch unless there is a triple-quote string from previous blocks
+            self.setCurrentBlockState(-1)
+
+        index = 0
+        while index < len(text):
+            add_to_index = 1
+            char = str(text[index])
+            if char in ["'", '"']:
+                # Triple-quote strings
+                if index+3 <= len(text) and str(text[index:index+3]) in ["'''", '"""'] and not self.isSubStrEscaped(index):
+                    potential_triple_quote = str(text[index:index+3])
+                    # Start a new triple-quote string block
+                    if self.currentBlockState() < 2:
+                        add_to_index = 3
+                        strings_and_comments["string2"].append((index, len(text)))
+                        self.setCurrentBlockState(self.block_state_id[potential_triple_quote])
+                    # Close old triple-quote string block
+                    elif self.currentBlockState() == self.block_state_id[potential_triple_quote]:
+                        add_to_index = 3
+                        last_index = len(strings_and_comments["string2"])-1
+                        start = strings_and_comments["string2"][last_index][0]
+                        strings_and_comments["string2"][last_index] = (start, index-start+3)
+                        self.setCurrentBlockState(-1)
+                # Single-quote strings
+                elif not self.isSubStrEscaped(index):
+                    # Start a new string block
+                    if self.currentBlockState() < 2:
+                        block_state = self.block_state_id[char]
+                        strings_and_comments["string"].append((index, len(text)))
+                        self.setCurrentBlockState(block_state)
+                    # Close old string block only if it matches the starting quote type
+                    elif self.currentBlockState() == self.block_state_id[char]:
+                        block_state = -1
+                        last_index = len(strings_and_comments["string"])-1
+                        start = strings_and_comments["string"][last_index][0]
+                        strings_and_comments["string"][last_index] = (start, index-start+1)
+                        self.setCurrentBlockState(block_state)
+            # Comments
+            elif char == "#" and self.currentBlockState() < 2:
+                strings_and_comments["comment"].append((index, len(text)-index))
+                self.setCurrentBlockState(self.block_state_id["#"])
+
+            index += add_to_index
+
+        return strings_and_comments
 
     def highlightBlock(self, text):
         """Apply syntax highlighting to the given block of text.
         """
-        self.formats = {}
+        # Start by parsing strings and comments since they are mutually exclusive escape-tokens of each other
+
+        self.formats = self.parseStringsAndComments(text)
+
+        # Set Format and collect all indices that have text.
+        indecies_with_text = []
+        for format_style, indecies in self.formats.items():
+            format_style = self.styles[format_style]
+            for start, str_len in indecies:
+                self.setFormat(start, str_len, format_style)
+                indecies_with_text.extend(range(start, start+str_len))
+
         # Do other syntax formatting
         for expression, nth, style in self.rules:
             index = expression.indexIn(text, 0)
-
             while index >= 0:
                 # We actually want the index of the nth match
                 index = expression.pos(nth)
                 length = len(expression.cap(nth))
 
-                self.setFormat(index, length, STYLES[style])
-                if style not in self.formats.keys():
-                    self.formats[style] = [(index, index+length)]
-                else:
-                    self.formats[style].append((index, index+length))
+                # skip matches that are already strings
+                if index not in indecies_with_text:
+                    self.setFormat(index, length, self.styles[style])
+                    if style not in self.formats.keys():
+                        self.formats[style] = [(index, index+length)]
+                    else:
+                        self.formats[style].append((index, index+length))
                 index = expression.indexIn(text, index + length)
 
-        # Look for mutually exclusive conflicts and choose the first occurrence. E.g. # inside a string
-        for style1, indecies1 in self.formats.items():
-            # start1, end1 = indecies1
-            for style2, indecies2 in self.formats.items():
-                if style1 == style2:
-                    continue
-
-                #TODO: further efficency here
-                for start1, end1 in indecies1:
-                    for start2, end2 in indecies2:
-                        if start2 < start1 < end2:
-                            self.setFormat(start2, end2-start2, STYLES[style2])
-                        if start1 < start2 < end1:
-                            self.setFormat(start1, end1-start1, STYLES[style1])
-
-        self.setCurrentBlockState(0)
-
-        # Do multi-line strings
-        in_multiline = self.match_multiline(text, *self.tri_single)
-        if not in_multiline:
-            self.match_multiline(text, *self.tri_double)
-
-        self.block_index += 1
-
-    def match_multiline(self, text, delimiter, in_state, style):
-        """Do highlighting of multi-line strings. ``delimiter`` should be a
-        ``QRegExp`` for triple-single-quotes or triple-double-quotes, and
-        ``in_state`` should be a unique integer to represent the corresponding
-        state changes when inside those strings. Returns True if we're still
-        inside a multi-line string when this function is finished.
-        """
-        # If inside triple-single quotes, start at 0
-        if self.previousBlockState() == in_state:
-            start = 0
-            add = 0
-        # Otherwise, look for the delimiter on this line
-        else:
-            start = delimiter.indexIn(text)
-
-            # If it is currently within a string it should not process
-            if [s for s, e in self.formats.get("string", []) if s < start < e]:
-                start = -1
-                add = -1
-            else:
-                # Move past this match
-                add = delimiter.matchedLength()
-
-        # As long as there's a delimiter match on this line...
-        while start >= 0:
-            # Look for the ending delimiter
-            end = delimiter.indexIn(text, start + add)
-            # Ending delimiter on this line?
-            if end >= add:
-                length = end - start + add + delimiter.matchedLength()
-                self.setCurrentBlockState(0)
-            # No; multi-line string
-            else:
-                self.setCurrentBlockState(in_state)
-                length = len(text) - start + add
-            # Apply formatting
-            self.setFormat(start, length, STYLES[style])
-            # Look for the next match
-            start = delimiter.indexIn(text, start + length)
-
-        # Return True if still inside a multi-line string, False otherwise
-        return self.currentBlockState() == in_state
